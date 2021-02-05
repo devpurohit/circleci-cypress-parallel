@@ -1,0 +1,48 @@
+# Javascript Node CircleCI 2.0 configuration file
+
+version: 2
+jobs:
+  build:
+    docker:
+      # Loading Node and Mongo
+      - image: circleci/node:10.16.0
+      - image: circleci/mongo:4
+      - image: cypress/base:10
+
+    working_directory: ~/repo
+    parallelism: 8
+    steps:
+      - checkout
+
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+            - v9-dependencies-{{ checksum "package.json" }}
+
+      - run: npm install
+
+      - save_cache:
+          key: v9-dependencies-{{ checksum "package.json" }}
+          paths:
+            - node_modules/
+            - ~/.cache
+            
+      - run: sudo apt-get update
+
+      # Rename .env.example to .env for setup cercle CI environment
+      - run: cp .env.example .env
+
+      # Run tsc
+      - run: npm run tsc
+
+      # build the angular project
+      - run: npm run staging-build
+      - run: npm run postbuild
+
+      # Add initial data into database for e2e
+      - run: npm run seed-db
+      
+      - run:
+          command:  circleci tests glob "cypress/integration/**/*.spec.ts" "cypress/integration/**.spec.ts"   | circleci tests split > /tmp/tests-to-run 
+      - run:
+         command:  npm run start-server & $(npm bin)/cypress run --spec $(cat /tmp/tests-to-run)
